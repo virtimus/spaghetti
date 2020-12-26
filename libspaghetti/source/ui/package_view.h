@@ -72,6 +72,8 @@ class PackageView final : public QGraphicsView {
   explicit PackageView(Editor *const a_editor, Package *const a_package);
   ~PackageView() override;
 
+  void consoleAppend(char* text);
+
   void open();
   void save();
 
@@ -92,7 +94,9 @@ class PackageView final : public QGraphicsView {
   Editor const *editor() const { return m_editor; }
   Editor *editor() { return m_editor; }
   Package const *package() const { return m_package; }
+  Package const *graph() const { return m_package; }
   Package *package() { return m_package; }
+  Package *graph() { return m_package; }
 
   bool canClose();
   void center();

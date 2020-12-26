@@ -53,8 +53,8 @@ int ExpanderWidget::insertItem(int const a_index, QWidget *const a_widget, QIcon
                                QString const &a_text)
 {
   QIcon icon{};
-  icon.addPixmap(QPixmap{ ":/expanded.png" }, QIcon::Normal, QIcon::On);
-  icon.addPixmap(QPixmap{ ":/collapsed.png" }, QIcon::Normal, QIcon::Off);
+  //icon.addPixmap(QPixmap{ ":/expanded.png" }, QIcon::Normal, QIcon::On);
+  //icon.addPixmap(QPixmap{ ":/collapsed.png" }, QIcon::Normal, QIcon::Off);
 
   auto const category = new QTreeWidgetItem{ this };
   category->setText(0, a_text);

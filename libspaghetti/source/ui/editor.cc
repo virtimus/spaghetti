@@ -47,6 +47,7 @@
 #include <QSortFilterProxyModel>
 #include <QTableWidget>
 #include <QToolButton>
+#include <QScrollBar>
 #include <QUrl>
 #include <cctype>
 #include <fstream>
@@ -62,14 +63,16 @@
 #include "ui/package_view.h"
 #include "filesystem.h"
 
-QString const PACKAGES_DIR{ "../packages" };
+QString const PACKAGES_DIR{ "../../packages" };
 
 namespace spaghetti {
 
-Editor::Editor(QWidget *const a_parent)
+Editor::Editor(QWidget *const a_parent, Registry* const reg)
   : QMainWindow{ a_parent }
   , m_ui{ new Ui::Editor }
 {
+  m_registry = reg;
+  Registry::registrySet(reg);
   setObjectName("SpaghettiEditor");
   m_ui->setupUi(this);
   m_ui->elementsContainer->removeItem(0);
@@ -82,6 +85,7 @@ Editor::Editor(QWidget *const a_parent)
 
   connect(m_ui->actionNew, &QAction::triggered, this, &Editor::newPackage);
   connect(m_ui->actionOpen, &QAction::triggered, this, &Editor::openPackage);
+  connect(m_ui->actionReloadAll, &QAction::triggered, this, &Editor::reloadAll);
   connect(m_ui->actionSave, &QAction::triggered, this, &Editor::savePackage);
   connect(m_ui->actionSaveAs, &QAction::triggered, this, &Editor::saveAsPackage);
   connect(m_ui->actionClose, &QAction::triggered, this, &Editor::closePackage);
@@ -135,6 +139,19 @@ Editor::~Editor()
   delete m_ui;
 }
 
+void Editor::reloadAll(){
+    //m_ui->elementsContainer->removeRows(0, m_model->rowCount());
+    //m_ui->packagesContainer->removeRows(0, m_model->rowCount());
+    populateLibrary();
+}
+
+void Editor::consoleAppend(char *text)
+{
+	m_ui->textBrowser->insertPlainText(text);
+	QScrollBar *sb = m_ui->textBrowser->verticalScrollBar();
+	sb->setValue(sb->maximum()+100);
+	m_ui->textBrowser->ensureCursorVisible();
+}
 void Editor::tabCloseRequested(int const a_index)
 {
   auto const tab = m_ui->tabWidget;
@@ -169,9 +186,13 @@ void Editor::tabChanged(int const a_index)
   }
 }
 
+Registry& Editor::RegistryGet(){
+	return *m_registry;
+}
+
 void Editor::populateLibrary()
 {
-  auto const &REGISTRY = Registry::get();
+  auto const &REGISTRY = *m_registry;//Registry::get();
 
   auto const &ELEMENTS_SIZE = REGISTRY.size();
   for (size_t i = 0; i < ELEMENTS_SIZE; ++i) {

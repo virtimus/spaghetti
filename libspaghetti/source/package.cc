@@ -81,8 +81,10 @@ void Package::serialize(Element::Json &a_json)
 
       jsonConnect["id"] = CONNECTION.from_id;
       jsonConnect["socket"] = CONNECTION.from_socket;
+      jsonConnect["flags"] = CONNECTION.from_flags;
       jsonTo["id"] = CONNECTION.to_id;
       jsonTo["socket"] = CONNECTION.to_socket;
+      jsonTo["flags"] = CONNECTION.to_flags;
 
       jsonConnection["connect"] = jsonConnect;
       jsonConnection["to"] = jsonTo;
@@ -94,9 +96,9 @@ void Package::serialize(Element::Json &a_json)
 
 void Package::deserialize(Json const &a_json)
 {
-  Element::deserialize(a_json);
-
   auto const IS_ROOT = m_package == nullptr;
+  Element::deserialize(a_json,IS_ROOT);
+
 
   auto const &NODE = a_json["node"];
   auto const INPUTS_POSITION = NODE["inputs_position"];
@@ -126,7 +128,7 @@ void Package::deserialize(Json const &a_json)
     std::string filename{};
 
     for (auto const &PACKAGE_INFO : PACKAGES) {
-      if (PACKAGE_INFO.second.path == PATH) {
+      if (PACKAGE_INFO.second.path == PATH || PACKAGE_INFO.second.filename == PATH) {
         filename = PACKAGE_INFO.second.filename;
         log::debug("Found one, '{}' is at '{}'", PATH, filename);
         break;
@@ -169,23 +171,33 @@ void Package::deserialize(Json const &a_json)
     auto const &TO = CONNECTION["to"];
     auto const &FROM_ID = remappedIds[FROM["id"].get<size_t>()];
     auto const &FROM_SOCKET = FROM["socket"].get<uint8_t>();
+    auto const &FROM_FLAGS = (FROM["flags"]!=NULL)?FROM["flags"].get<uint8_t>():0;
     auto const &TO_ID = remappedIds[TO["id"].get<size_t>()];
     auto const &TO_SOCKET = TO["socket"].get<uint8_t>();
-    connect(FROM_ID, FROM_SOCKET, TO_ID, TO_SOCKET);
+    auto const &TO_FLAGS = (TO["flags"]!=NULL)?TO["flags"].get<uint8_t>():0;
+    connect(FROM_ID, FROM_SOCKET, FROM_FLAGS, TO_ID, TO_SOCKET, TO_FLAGS);
   }
 }
 
 void Package::calculate()
 {
+
+
   for (auto &&connection : m_connections) {
     Element *const source{ get(connection.from_id) };
     Element *const target{ get(connection.to_id) };
 
     auto const IS_SOURCE_SELF = connection.from_id == 0;
     auto const IS_TARGET_SELF = connection.to_id == 0;
-
-    auto const &SOURCE_IO = IS_SOURCE_SELF ? source->inputs() : source->outputs();
-    auto &targetIO = IS_TARGET_SELF ? target->outputs() : target->inputs();
+//&& connection.from_flags != 2
+    //spaghetti::log::info("conn from {}@{}@{}",connection.from_id,connection.from_socket,connection.from_flags);
+    //spaghetti::log::info("conn to   {}@{}@{}",connection.to_id,connection.to_socket,connection.to_flags);
+    //IS_SOURCE_SELF ||
+    auto const &SOURCE_IO =  IS_SOURCE_SELF || connection.from_flags != 2  ? source->inputs() : source->outputs();
+    //&& connection.to_flags == 2
+    //IS_TARGET_SELF ||
+    auto &targetIO =  IS_TARGET_SELF || connection.to_flags == 2 ? target->outputs() : target->inputs();
+    //spaghetti::log::info("before write val");
     targetIO[connection.to_socket].value = SOURCE_IO[connection.from_socket].value;
   }
 
@@ -195,6 +207,7 @@ void Package::calculate()
     element->update(m_delta);
     element->calculate();
   }
+
 }
 
 Element *Package::add(string::hash_t const a_hash)
@@ -252,19 +265,37 @@ Element *Package::get(size_t const a_id) const
   return m_elements[a_id];
 }
 
-bool Package::connect(size_t const a_sourceId, uint8_t const a_sourceSocket, size_t const a_targetId,
-                      uint8_t const a_targetSocket)
+bool Package::connect(size_t const a_sourceId, uint8_t const a_sourceSocket, uint8_t const a_sourceFlags, size_t const a_targetId,
+                      uint8_t const a_targetSocket, uint8_t const a_targetFlags)
 {
   pauseDispatchThread();
 
   auto const source = get(a_sourceId);
   auto const target = get(a_targetId);
 
-  spaghetti::log::debug("Connecting source: {}@{} to target: {}@{}", a_sourceId, static_cast<int>(a_sourceSocket),
-                        a_targetId, static_cast<int>(a_targetSocket));
+  spaghetti::log::info("Connecting source: {}@{}@{} to target: {}@{}@{}", a_sourceId, static_cast<int>(a_sourceSocket),static_cast<int>(a_sourceFlags),
+                        a_targetId, static_cast<int>(a_targetSocket),static_cast<int>(a_targetFlags));
+//a_sourceId != 0 ||
+  uint8_t  sourceFlags = a_sourceFlags;
+ std::string str1 ("logic/package");
+ /*if (str1.compare(source->type())==0) {
+     sourceFlags = ( a_sourceFlags == 2 )?1:2;
+ }*/
+  bool isSourcePackage = (str1.compare(source->type())==0) && !source->isRoot();
 
-  auto const &SOURCE = a_sourceId != 0 ? source->m_outputs : source->m_inputs;
-  auto &TARGET = a_targetId != 0 ? target->m_inputs : target->m_outputs;
+  //auto const &SOURCE =  sourceFlags == 2 && a_sourceId != 0 ? source->m_outputs : source->m_inputs;
+  //auto const &SOURCE = (isSourcePackage && a_sourceId != 0) || (sourceFlags != 2 && a_sourceId != 0) ? source->m_outputs : source->m_inputs;
+  auto const &SOURCE =  a_sourceId == 0  ?  source->m_inputs : source->m_outputs;
+  //a_targetId != 0 &&
+  uint8_t  targetFlags = a_targetFlags;
+  /*if (str1.compare(target->type())==0) {
+      targetFlags = ( a_targetFlags == 2 )?1:2;
+  }*/
+
+  //bool isTargetPackage = (str1.compare(target->type())==0) && !target->isRoot();
+
+  //auto &TARGET = (isTargetPackage && a_targetId != 0) || (targetFlags != 2 && a_targetId != 0) ? target->m_inputs : target->m_outputs;
+  auto &TARGET = a_targetId == 0 ? target->m_outputs : target->m_inputs ;
   auto const SOURCE_SIZE = SOURCE.size();
   auto const TARGET_SIZE = TARGET.size();
   assert(a_sourceSocket < SOURCE_SIZE && "Socket ID don't exist");
@@ -272,12 +303,13 @@ bool Package::connect(size_t const a_sourceId, uint8_t const a_sourceSocket, siz
 
   TARGET[a_targetSocket].id = a_sourceId;
   TARGET[a_targetSocket].slot = a_sourceSocket;
+  TARGET[a_targetSocket].inFlags = sourceFlags;
 
-  spaghetti::log::debug("Notifying {}({})@{} when {}({})@{} changes..", a_targetId, target->name(),
+  spaghetti::log::info("Notifying {}({})@{} when {}({})@{} changes..", a_targetId, target->name(),
                         static_cast<int32_t>(a_targetSocket), a_sourceId, source->name(),
                         static_cast<int32_t>(a_sourceSocket));
 
-  m_connections.emplace_back(Connection{ a_sourceId, a_sourceSocket, a_targetId, a_targetSocket });
+  m_connections.emplace_back(Connection{ a_sourceId, a_sourceSocket, a_sourceFlags, a_targetId, a_targetSocket, a_targetFlags });
 
   auto &dependencies = m_dependencies[a_sourceId];
   auto const IT = std::find(std::begin(dependencies), std::end(dependencies), a_targetId);
@@ -288,8 +320,8 @@ bool Package::connect(size_t const a_sourceId, uint8_t const a_sourceSocket, siz
   return true;
 }
 
-bool Package::disconnect(size_t const a_sourceId, uint8_t const a_outputId, size_t const a_targetId,
-                         uint8_t const a_inputId)
+bool Package::disconnect(size_t const a_sourceId, uint8_t const a_outputId, uint8_t const a_outputFlags,size_t const a_targetId,
+                         uint8_t const a_inputId, uint8_t const a_inputFlags)
 {
   pauseDispatchThread();
 
@@ -298,14 +330,15 @@ bool Package::disconnect(size_t const a_sourceId, uint8_t const a_outputId, size
   spaghetti::log::debug("Disconnecting source: {}@{} from target: {}@{}", a_sourceId, static_cast<int>(a_outputId),
                         a_targetId, static_cast<int>(a_inputId));
 
-  auto &targetInput = target->m_inputs[a_inputId];
+  auto &targetInput = a_inputFlags != 2 ? target->m_inputs[a_inputId] : target->m_outputs[a_inputId];
   targetInput.id = 0;
   targetInput.slot = 0;
+  targetInput.inFlags = 0;
   resetIOSocketValue(targetInput);
 
   auto it = std::remove_if(std::begin(m_connections), std::end(m_connections), [=](Connection &a_connection) {
-    return a_connection.from_id == a_sourceId && a_connection.from_socket == a_outputId &&
-           a_connection.to_id == a_targetId && a_connection.to_socket == a_inputId;
+    return a_connection.from_id == a_sourceId && a_connection.from_socket == a_outputId && a_connection.from_flags == a_outputFlags
+    		&& a_connection.to_id == a_targetId && a_connection.to_socket == a_inputId && a_connection.to_flags == a_inputFlags;
   });
   m_connections.erase(it, std::end(m_connections));
 
@@ -468,6 +501,10 @@ Registry::PackageInfo Package::getInfoFor(std::string const &a_filename)
   type.path = json["package"]["path"];
 
   return type;
+}
+
+void Package::consoleAppend(char* text){
+   // m_package->m_packageView->editor()->consoleAppend(text);
 }
 
 } // namespace spaghetti

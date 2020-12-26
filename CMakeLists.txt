@@ -16,7 +16,7 @@ include(DetectCxxFilesystem)
 include(GetRepoInfo)
 include(VendorHeaders)
 
-option(SPAGHETTI_BUILD_EDITOR "Build editor" ON)
+option(SPAGHETTI_BUILD_EDITOR "Build editor" OFF)
 option(SPAGHETTI_BUILD_EXAMPLE_PLUGIN "Build example plugin" ON)
 option(SPAGHETTI_ENABLE_CPACK "Enable CPack" OFF)
 option(SPAGHETTI_ENABLE_ALL_WARNINGS "Enable all warnings" OFF)

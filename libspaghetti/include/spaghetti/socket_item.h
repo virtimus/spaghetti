@@ -39,18 +39,21 @@ constexpr int SOCKET_TYPE{ QGraphicsItem::UserType + 3 };
 
 class SocketItem final : public QGraphicsItem {
  public:
-  enum class Type { eInput, eOutput };
+  //enum class Type { eInput, eOutput, eDynamic };
+  using Type = SocketItemType;
 
   constexpr static int SIZE{ 16 };
 
-  SocketItem(Node *const a_node, Type const a_type);
+  SocketItem(Node *const a_node, IOSocketsType ioType, Type const a_type);
 
   int type() const override { return SOCKET_TYPE; }
 
   bool isInput() const { return m_type == Type::eInput; }
   bool isOutput() const { return m_type == Type::eOutput; }
+  IOSocketsType ioType() { return m_ioType; }
 
   QRectF boundingRect() const override;
+  Node* const node();
 
   void paint(QPainter *aPainter, QStyleOptionGraphicsItem const *a_option, QWidget *a_widget) override;
 
@@ -84,9 +87,11 @@ class SocketItem final : public QGraphicsItem {
   size_t elementId() const { return m_elementId; }
   void setSocketId(uint8_t const a_socketId) { m_socketId = a_socketId; }
   uint8_t socketId() const { return m_socketId; }
+  uint8_t ioFlags() const { return (m_ioType  == IOSocketsType::eOutputs)? 2 : 1; }
 
   void setColors(QColor const a_signalOff, QColor const a_signalOn);
   void setSignal(bool const a_signal);
+  void setMultiuse(bool const muse);
 
   void connect(SocketItem *const a_other);
   void disconnect(SocketItem *const a_other);
@@ -113,14 +118,17 @@ class SocketItem final : public QGraphicsItem {
   QColor m_colorSignalOn{};
   QColor m_colorSignalOff{};
   bool m_isSignalOn{};
+  bool m_isSignalOnPrev{};
 
   Node *const m_node{};
   Type m_type{};
+  IOSocketsType m_ioType{};
 
   bool m_isHover{};
   bool m_isDrop{};
   bool m_used{};
   bool m_nameHidden{};
+  bool m_multiuse{};
 
   QVector<LinkItem *> m_links{};
 };

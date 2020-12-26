@@ -10,13 +10,25 @@
     <height>976</height>
    </rect>
   </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
   <property name="windowTitle">
    <string>Spaghetti</string>
   </property>
   <widget class="QWidget" name="centralWidget">
-   <layout class="QHBoxLayout" name="horizontalLayout" stretch="8">
+   <layout class="QVBoxLayout" name="verticalLayout_5">
     <item>
      <widget class="QTabWidget" name="tabWidget">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+        <horstretch>0</horstretch>
+        <verstretch>10</verstretch>
+       </sizepolicy>
+      </property>
       <property name="currentIndex">
        <number>0</number>
       </property>
@@ -36,6 +48,24 @@
       </widget>
      </widget>
     </item>
+    <item>
+     <widget class="QTextBrowser" name="textBrowser">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="MinimumExpanding">
+        <horstretch>0</horstretch>
+        <verstretch>3</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="font">
+       <font>
+        <family>Courier New</family>
+        <pointsize>10</pointsize>
+        <weight>75</weight>
+        <bold>true</bold>
+       </font>
+      </property>
+     </widget>
+    </item>
    </layout>
   </widget>
   <widget class="QMenuBar" name="menuBar">
@@ -44,7 +74,7 @@
      <x>0</x>
      <y>0</y>
      <width>1486</width>
-     <height>24</height>
+     <height>28</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -108,8 +138,8 @@
          <rect>
           <x>0</x>
           <y>0</y>
-          <width>274</width>
-          <height>847</height>
+          <width>278</width>
+          <height>827</height>
          </rect>
         </property>
         <attribute name="label">
@@ -118,6 +148,9 @@
         <layout class="QVBoxLayout" name="verticalLayout">
          <item>
           <widget class="ExpanderWidget" name="elementsContainer">
+           <property name="autoScroll">
+            <bool>false</bool>
+           </property>
            <column>
             <property name="text">
              <string notr="true">1</string>
@@ -132,8 +165,8 @@
          <rect>
           <x>0</x>
           <y>0</y>
-          <width>274</width>
-          <height>847</height>
+          <width>278</width>
+          <height>827</height>
          </rect>
         </property>
         <attribute name="label">
@@ -142,6 +175,9 @@
         <layout class="QVBoxLayout" name="verticalLayout_3">
          <item>
           <widget class="ExpanderWidget" name="packagesContainer">
+           <property name="autoScroll">
+            <bool>false</bool>
+           </property>
            <column>
             <property name="text">
              <string notr="true">1</string>
@@ -157,8 +193,14 @@
    </widget>
   </widget>
   <widget class="QDockWidget" name="elements">
+   <property name="minimumSize">
+    <size>
+     <width>108</width>
+     <height>163</height>
+    </size>
+   </property>
    <property name="windowTitle">
-    <string>Ele&amp;ments</string>
+    <string>Ite&amp;ms</string>
    </property>
    <attribute name="dockWidgetArea">
     <number>2</number>
@@ -186,6 +228,12 @@
    </widget>
   </widget>
   <widget class="QDockWidget" name="properties">
+   <property name="minimumSize">
+    <size>
+     <width>300</width>
+     <height>450</height>
+    </size>
+   </property>
    <property name="windowTitle">
     <string>P&amp;roperties</string>
    </property>
@@ -302,6 +350,11 @@
   <action name="actionSaveAs">
    <property name="text">
     <string>Sa&amp;ve as</string>
+   </property>
+  </action>
+  <action name="actionReloadAll">
+   <property name="text">
+    <string>ReloadAll</string>
    </property>
   </action>
  </widget>

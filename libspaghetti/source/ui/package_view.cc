@@ -33,6 +33,8 @@
 #include <QTableWidget>
 #include <QTimeLine>
 
+#include "spaghetti/logger.h"
+
 // clang-format off
 #ifdef SPAGHETTI_USE_OPENGL
 # include <QGLWidget>
@@ -66,7 +68,8 @@ QVariant NodesListModel::data(QModelIndex const &a_index, int a_role) const
 
   auto const node = m_nodes[a_index.row()];
   if (a_role == Qt::DecorationRole)
-    return node->icon().scaled(QSize(50, 25));
+    return (node->icon().size().height()>0)?node->icon().scaled(QSize(50, 25)):node->icon();
+	//return QString("%1 (%2)").arg(node->name()).arg(node->element()->id());
   else if (a_role == Qt::DisplayRole)
     return QString("%1 (%2)").arg(node->name()).arg(node->element()->id());
 
@@ -119,7 +122,7 @@ PackageView::PackageView(Editor *const a_editor, Package *const a_package)
   , m_standalone{ m_package->package() == nullptr }
 {
   if (m_standalone) {
-    m_packageNode = static_cast<nodes::Package *>(Registry::get().createNode("logic/package"));
+    m_packageNode = static_cast<nodes::Package *>(/*Registry::get()*/m_editor->RegistryGet().createNode("logic/package"));
     m_package->setNode(m_packageNode);
   } else
     m_packageNode = m_package->node<nodes::Package>();
@@ -176,14 +179,16 @@ PackageView::PackageView(Editor *const a_editor, Package *const a_package)
   m_packageNode->setElement(m_package);
 
   if (m_package->name().empty()) {
-    auto &registry = Registry::get();
+    auto &registry = /*Registry::get()*/m_editor->RegistryGet();
     m_package->setName(registry.elementName("logic/package"));
   }
 
   m_scene->addItem(m_inputs);
   m_scene->addItem(m_outputs);
 
-  m_timer.setInterval(1000 / 60);
+  //m_timer.setInterval(1000 / 60);
+  //m_timer.setInterval(5000);
+  m_timer.setInterval(1);
 
   connect(&m_timer, &QTimer::timeout, [this]() { m_scene->advance(); });
   m_timer.start();
@@ -207,7 +212,7 @@ void PackageView::open()
   m_inputs->setPos(inputsPosition.x, inputsPosition.y);
   m_outputs->setPos(outputsPosition.x, outputsPosition.y);
 
-  Registry &registry{ Registry::get() };
+  Registry &registry{ /*Registry::get()*/m_editor->RegistryGet() };
 
   auto const &elements = m_package->elements();
   size_t const SIZE{ elements.size() };
@@ -239,13 +244,23 @@ void PackageView::open()
   for (auto const &connection : connections) {
     auto const SOURCE_ID = connection.from_id;
     auto const SOURCE_SOCKET = connection.from_socket;
+    auto const SOURCE_IOFLAGS = connection.from_flags;
     auto const TARGET_ID = connection.to_id;
     auto const TARGET_SOCKET = connection.to_socket;
+    auto const TARGET_IOFLAGS = connection.to_flags;
 
     auto const source = SOURCE_ID != 0 ? getNode(SOURCE_ID) : m_packageNode->inputsNode();
     auto const target = TARGET_ID != 0 ? getNode(TARGET_ID) : m_packageNode->outputsNode();
-    auto const sourceSocket = source->outputs()[SOURCE_SOCKET];
-    auto const targetSocket = target->inputs()[TARGET_SOCKET];
+    auto const sourceIos = SOURCE_IOFLAGS == 2 /*&& SOURCE_ID != 0*/ ? source->outputs():source->inputs();
+    if (SOURCE_SOCKET>=sourceIos.size()){
+        spaghetti::log::info("Przekroczenie dlugości wektora source dla: {}",source->name().toUtf8().constData());
+    }
+    auto const sourceSocket =  sourceIos[SOURCE_SOCKET];
+    auto const targetIos = TARGET_IOFLAGS == 2 /*&& TARGET_ID != 0*/ ? target->outputs() : target->inputs();
+    if (TARGET_SOCKET>=targetIos.size()){
+        spaghetti::log::info("Przekroczenie dlugości wektora target dla:{} ",target->name().toUtf8().constData());
+    }
+    auto const targetSocket =  targetIos[TARGET_SOCKET];
     sourceSocket->connect(targetSocket);
   }
 }
@@ -275,7 +290,7 @@ void PackageView::dragEnterEvent(QDragEnterEvent *a_event)
 
     auto const DROP_POSITION = mapToScene(a_event->pos());
 
-    Registry &registry{ Registry::get() };
+    Registry &registry{ /*Registry::get()*/m_editor->RegistryGet() };
 
     assert(m_dragNode == nullptr);
     m_dragNode = registry.createNode(path);
@@ -335,7 +350,10 @@ void PackageView::dropEvent(QDropEvent *a_event)
     if (element->name().empty()) element->setName(m_dragNode->name().toStdString());
     if (isPackage) {
       auto const package = static_cast<Package *>(element);
+      //std:string strFile(QString{ file }.toStdString());
       package->open(QString{ file }.toStdString());
+      package->setPackagePath(QString{ file }.toStdString());
+      //m_dragNode->setPackagePath(file);
     }
     m_dragNode->setElement(element);
     m_dragNode->iconify();
@@ -540,6 +558,10 @@ void PackageView::updateGrid(qreal const a_scale)
   if (newDensity == m_gridDensity) return;
 
   m_gridDensity = newDensity;
+}
+
+void PackageView::consoleAppend(char* text){
+    editor()->consoleAppend(text);
 }
 
 } // namespace spaghetti

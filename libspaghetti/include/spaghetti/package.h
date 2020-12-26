@@ -57,14 +57,18 @@ class SPAGHETTI_API Package final : public Element {
   struct Connection {
     size_t from_id{};
     uint8_t from_socket{};
+    uint8_t from_flags{};
     size_t to_id{};
     uint8_t to_socket{};
+    uint8_t to_flags{};
   };
 
   using Connections = std::vector<Connection>;
 
   Package();
   ~Package() override;
+
+  void consoleAppend(char *text);
 
   static constexpr char const *const TYPE{ "logic/package" };
   static constexpr string::hash_t const HASH{ string::hash(TYPE) };
@@ -95,9 +99,9 @@ class SPAGHETTI_API Package final : public Element {
 
   Element *get(size_t const a_id) const;
 
-  bool connect(size_t const a_sourceId, uint8_t const a_sourceSocket, size_t const a_targetId,
-               uint8_t const a_targetSocket);
-  bool disconnect(size_t const a_sourceId, uint8_t const a_outputId, size_t const a_targetId, uint8_t const a_inputId);
+  bool connect(size_t const a_sourceId, uint8_t const a_sourceSocket, uint8_t const a_sourceFlags, size_t const a_targetId,
+               uint8_t const a_targetSocket, uint8_t const a_targetFlags);
+  bool disconnect(size_t const a_sourceId, uint8_t const a_outputId,  uint8_t const a_outputFlags, size_t const a_targetId, uint8_t const a_inputId, uint8_t const a_inputFlags);
 
   void dispatchThreadFunction();
 

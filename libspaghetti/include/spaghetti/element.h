@@ -48,11 +48,17 @@ namespace spaghetti {
 
 class Package;
 
-enum class ValueType { eBool, eInt, eFloat };
+enum class ValueType { eBool, eInt, eFloat, eByte, eWord64 };//IoType
+enum class SocketItemType { eInput, eOutput, eDynamic };//SiType
+enum class IOSocketsType { eInputs, eOutputs, eTop, eDown};//IoSide
+enum class EOrientation { eRight, eLeft, eUp, eDown };//TBD
 
 struct EventNameChanged {
   std::string from;
   std::string to;
+};
+struct EventConsoleTrig {
+  std::string text;
 };
 struct EventIONameChanged {
   std::string from;
@@ -68,9 +74,10 @@ struct EventIOTypeChanged {
 };
 struct EventEmpty {
 };
-using EventValue = std::variant<EventNameChanged, EventIONameChanged, EventIOTypeChanged, EventEmpty>;
+using EventValue = std::variant<EventNameChanged, EventConsoleTrig, EventIONameChanged, EventIOTypeChanged, EventEmpty>;
 enum class EventType {
   eElementNameChanged,
+  eConsoleTrig,
   eIONameChanged,
   eIOTypeChanged,
   eInputAdded,
@@ -91,7 +98,7 @@ class SPAGHETTI_API Element {
   using duration_t = std::chrono::duration<double, std::milli>;
 
   using Json = nlohmann::json;
-  using Value = std::variant<bool, int32_t, float>;
+  using Value = std::variant<bool, int32_t, float, uint8_t, uint64_t>;
   template<typename T>
   struct Vec2 {
     T x{};
@@ -107,7 +114,9 @@ class SPAGHETTI_API Element {
       eCanHoldInt = 1 << 1,
       eCanHoldFloat = 1 << 2,
       eCanChangeName = 1 << 3,
-      eCanHoldAllValues = eCanHoldBool | eCanHoldInt | eCanHoldFloat,
+      eCanHoldByte = 1 << 4,
+	  eCanHoldWord64 = 1 << 5,
+      eCanHoldAllValues = eCanHoldBool | eCanHoldInt | eCanHoldFloat | eCanHoldByte | eCanHoldWord64,
       eDefaultFlags = eCanHoldAllValues | eCanChangeName
     };
     Value value{};
@@ -115,8 +124,11 @@ class SPAGHETTI_API Element {
 
     size_t id{};
     uint8_t slot{};
+    uint8_t inFlags{};
     uint8_t flags{};
     std::string name{};
+
+    SocketItemType sItemType{};
   };
 
   using IOSockets = std::vector<IOSocket>;
@@ -124,11 +136,19 @@ class SPAGHETTI_API Element {
   Element() = default;
   virtual ~Element() = default;
 
+
+
+
+  void consoleAppend(char *text);
+  template<typename... Args>
+  void consoleAppendF(const std::string& format, Args ... args);
+
   virtual char const *type() const noexcept = 0;
   virtual string::hash_t hash() const noexcept = 0;
 
   virtual void serialize(Json &a_json);
   virtual void deserialize(Json const &a_json);
+  virtual void deserialize(Json const &a_json, const bool isRootPackage);
 
   virtual void calculate() {}
   virtual void reset() {}
@@ -138,8 +158,15 @@ class SPAGHETTI_API Element {
   size_t id() const noexcept { return m_id; }
 
   void setName(std::string const &a_name);
+  void setDesc(std::string const &a_desc);
+  bool isRotate();
+  bool isRoot() { return m_package == nullptr; }
+  void setRotate(bool const &rotate);
+  bool isInvertH();
+  void setInvertH(bool const &invertH);
 
   std::string name() const noexcept { return m_name; }
+  std::string description() const noexcept { return m_desc; }
 
   void setPosition(double const a_x, double const a_y)
   {
@@ -161,11 +188,16 @@ class SPAGHETTI_API Element {
   IOSockets const &outputs() const { return m_outputs; }
 
   bool addInput(ValueType const a_type, std::string const &a_name, uint8_t const a_flags);
+  bool addInput(ValueType const a_type, std::string const &a_name, uint8_t const a_flags, SocketItemType sItemType);
+  virtual size_t addInputS(ValueType const a_type, std::string const &a_name, uint8_t const a_flags, SocketItemType sItemType);
+
   void setInputName(uint8_t const a_input, std::string const &a_name);
   void removeInput();
   void clearInputs();
 
   bool addOutput(ValueType const a_type, std::string const &a_name, uint8_t const a_flags);
+  bool addOutput(ValueType const a_type, std::string const &a_name, uint8_t const a_flags, SocketItemType sItemType);
+  virtual size_t addOutputS(ValueType const a_type, std::string const &a_name, uint8_t const a_flags, SocketItemType sItemType);
   void setOutputName(uint8_t const a_output, std::string const &a_name);
   void removeOutput();
   void clearOutputs();
@@ -173,7 +205,7 @@ class SPAGHETTI_API Element {
   void setIOName(bool const a_input, uint8_t const a_id, std::string const &a_name);
   void setIOValueType(bool const a_input, uint8_t const a_id, ValueType const a_type);
 
-  bool connect(size_t const a_sourceId, uint8_t const a_outputId, uint8_t const a_inputId);
+  bool connect(size_t const a_sourceId, uint8_t const a_outputId, uint8_t const a_outputFlags, uint8_t const a_inputId, uint8_t const a_inputFlags);
 
   uint8_t minInputs() const { return m_minInputs; }
   uint8_t maxInputs() const { return m_maxInputs; }
@@ -187,6 +219,22 @@ class SPAGHETTI_API Element {
   void resetIOSocketValue(IOSocket &a_io);
 
   void setNode(void *const a_node) { m_node = a_node; }
+
+  EOrientation orientation(){
+	  EOrientation orient = EOrientation::eRight;
+	  if (m_rotate) {
+		  if (!m_invertH){
+			  orient = EOrientation::eUp;
+		  } else {
+			  orient = EOrientation::eDown;
+		  }
+	  } else {
+		  if (m_invertH){
+			  orient = EOrientation::eLeft;
+		  }
+	  }
+	  return orient;
+  };
 
   template<typename T>
   T *node()
@@ -207,17 +255,20 @@ class SPAGHETTI_API Element {
   void setMinOutputs(uint8_t const a_min);
   void setMaxOutputs(uint8_t const a_max);
   void setDefaultNewOutputFlags(uint8_t const a_flags) { m_defaultNewOutputFlags = a_flags; }
-
+  Package *m_package{};
  protected:
   IOSockets m_inputs{};
   IOSockets m_outputs{};
 
   friend class Package;
-  Package *m_package{};
 
- private:
+  bool m_rotate{ false };
+  bool m_invertH{ false };
   size_t m_id{};
+ private:
+
   std::string m_name{};
+  std::string m_desc{};
   vec2d m_position{};
   bool m_isIconified{};
   bool m_iconifyingHidesCentralWidget{};

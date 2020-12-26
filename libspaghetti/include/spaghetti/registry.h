@@ -44,8 +44,8 @@ namespace spaghetti {
 class Element;
 class Node;
 
-class SPAGHETTI_API Registry final {
-  struct MetaInfo {
+class SPAGHETTI_API Registry  {
+protected: struct MetaInfo {
     string::hash_t hash{};
     std::string type{};
     std::string name{};
@@ -64,7 +64,15 @@ class SPAGHETTI_API Registry final {
   };
   using Packages = std::unordered_map<std::string, PackageInfo>;
 
-  static Registry &get();
+  static Registry* m_instance1;
+  static Registry &get() { return *m_instance1; }
+  static void registrySet(Registry * reg){ m_instance1 = reg; }
+  static Registry &instance() {
+      if (m_instance1 == nullptr){
+    	  m_instance1 = new Registry;
+      }
+      return *m_instance1;
+  }
 
   ~Registry();
 
@@ -112,9 +120,10 @@ class SPAGHETTI_API Registry final {
   std::string userPluginsPath() const;
   std::string systemPackagesPath() const;
   std::string userPackagesPath() const;
-
- private:
+ protected:
   Registry();
+ private:
+
 
   void addElement(MetaInfo &a_metaInfo);
 

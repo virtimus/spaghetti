@@ -70,6 +70,9 @@ class LinkItem final : public QGraphicsPathItem {
 
   void trackNodes();
 
+  template<typename... Args>
+  void consoleAppendF(const std::string& format, Args ... args);
+
  private:
   SocketItem *m_from{};
   SocketItem *m_to{};

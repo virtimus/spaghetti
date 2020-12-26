@@ -24,8 +24,13 @@
 
 #include <cassert>
 #include <iostream>
+//#include <format>
+#include <memory>
+#include <string>
+#include <stdexcept>
 
 #include "spaghetti/package.h"
+#include "spaghetti/logger.h"
 
 namespace spaghetti {
 
@@ -34,7 +39,10 @@ void Element::serialize(Element::Json &a_json)
   auto &jsonElement = a_json["element"];
   jsonElement["id"] = m_id;
   jsonElement["name"] = m_name;
+  jsonElement["description"] = m_desc;
   jsonElement["type"] = type();
+  jsonElement["rotate"] = m_rotate;
+  jsonElement["invertH"] = m_invertH;
   jsonElement["min_inputs"] = m_minInputs;
   jsonElement["max_inputs"] = m_maxInputs;
   jsonElement["min_outputs"] = m_minOutputs;
@@ -47,10 +55,29 @@ void Element::serialize(Element::Json &a_json)
       case ValueType::eBool: return "bool";
       case ValueType::eInt: return "int";
       case ValueType::eFloat: return "float";
+      case ValueType::eByte: return "byte";
+      case ValueType::eWord64: return "word64";
     }
     assert(false && "Wrong socket type");
     return "unknown";
   };
+
+  auto getSocketItemType = [](SocketItemType const a_type) {
+    switch (a_type) {
+      case SocketItemType::eInput: return "i";
+      case SocketItemType::eOutput: return "o";
+      case SocketItemType::eDynamic: return "d";
+    }
+    //spaghetti::log::info("[element.serialize] Wrong socket item type: {}",a_type);
+    //assert(false && "[element.serialize] Wrong socket item type");
+    return "unknown";
+  };
+
+  bool isPackageElem = false;
+  std::string str1 ("logic/package");
+  if ( str1.compare(this->type())==0 ) {
+      isPackageElem = true;
+  }
 
   auto jsonInputs = Json::array();
   size_t const INPUTS_COUNT{ m_inputs.size() };
@@ -58,8 +85,15 @@ void Element::serialize(Element::Json &a_json)
     Json socket{};
     socket["socket"] = i;
     socket["type"] = getSocketType(m_inputs[i].type);
+    if (isPackageElem){// for package allways output
+        socket["siType"] = getSocketItemType(SocketItemType::eInput);
+    } else {
+        socket["siType"] = getSocketItemType(m_inputs[i].sItemType);
+    }
+
     socket["name"] = m_inputs[i].name;
     socket["flags"] = m_inputs[i].flags;
+    socket["inFlags"] = m_inputs[i].inFlags;
     jsonInputs.push_back(socket);
   }
 
@@ -69,8 +103,15 @@ void Element::serialize(Element::Json &a_json)
     Json socket{};
     socket["socket"] = i;
     socket["type"] = getSocketType(m_outputs[i].type);
+    if (isPackageElem){// f
+        socket["siType"] = getSocketItemType(SocketItemType::eOutput);
+    } else {
+        socket["siType"] = getSocketItemType(m_outputs[i].sItemType);
+    }
+
     socket["name"] = m_outputs[i].name;
     socket["flags"] = m_outputs[i].flags;
+    socket["inFlags"] = m_outputs[i].inFlags;
     jsonOutputs.push_back(socket);
   }
 
@@ -85,10 +126,17 @@ void Element::serialize(Element::Json &a_json)
   jsonNode["iconifying_hides_central_widget"] = m_iconifyingHidesCentralWidget;
 }
 
-void Element::deserialize(Json const &a_json)
+void Element::deserialize(Json const &a_json){
+    deserialize(a_json,false);
+}
+
+void Element::deserialize(Json const &a_json, const bool isRootPackage)
 {
   auto const &ELEMENT = a_json["element"];
   auto const NAME = ELEMENT["name"].get<std::string>();
+  auto const DESC = (ELEMENT.find("description")!=ELEMENT.end())?ELEMENT["description"].get<std::string>():"";
+  auto const ROTATE = (ELEMENT.find("rotate")!=ELEMENT.end())?ELEMENT["rotate"].get<bool>():false;
+  auto const INVERTH = (ELEMENT.find("invertH")!=ELEMENT.end())?ELEMENT["invertH"].get<bool>():false;
   auto const MIN_INPUTS = ELEMENT["min_inputs"].get<uint8_t>();
   auto const MAX_INPUTS = ELEMENT["max_inputs"].get<uint8_t>();
   auto const MIN_OUTPUTS = ELEMENT["min_outputs"].get<uint8_t>();
@@ -108,6 +156,9 @@ void Element::deserialize(Json const &a_json)
   auto const POSITION_Y = POSITION["y"].get<double>();
 
   setName(NAME);
+  setDesc(DESC);
+  setRotate(ROTATE);
+  setInvertH(INVERTH);
   setPosition(POSITION_X, POSITION_Y);
   clearInputs();
   clearOutputs();
@@ -120,9 +171,10 @@ void Element::deserialize(Json const &a_json)
   iconify(ICONIFY);
   setIconifyingHidesCentralWidget(ICONIFYING_HIDES_CENTRAL_WIDGET);
 
-  auto add_socket = [&](Json const &a_socket, bool const a_input, uint8_t &a_socketCount) {
+  auto add_socket = [&](Json const &a_socket, bool const a_input, uint8_t &a_socketCount, bool const isRootPackage) {
     auto const SOCKET_ID = a_socket["socket"].get<uint8_t>();
     auto const SOCKET_STRING_TYPE = a_socket["type"].get<std::string>();
+    auto const SOCKET_STRING_ITEM_TYPE = (a_socket.find("siType")!=a_socket.end())?a_socket["siType"].get<std::string>():"unknown";
     auto const SOCKET_NAME = a_socket["name"].get<std::string>();
     auto const SOCKET_FLAGS = a_socket["flags"].get<uint8_t>();
 
@@ -135,17 +187,61 @@ void Element::deserialize(Json const &a_json)
         return ValueType::eInt;
       else if (a_type == "float")
         return ValueType::eFloat;
+      else if (a_type == "byte")
+        return ValueType::eByte;
+      else if (a_type == "word64")
+        return ValueType::eWord64;
       assert(false && "Wrong socket type");
       return ValueType::eBool;
     }(SOCKET_STRING_TYPE);
 
-    a_input ? addInput(SOCKET_TYPE, SOCKET_NAME, SOCKET_FLAGS) : addOutput(SOCKET_TYPE, SOCKET_NAME, SOCKET_FLAGS);
+
+
+    SocketItemType const SOCKET_ITEM_TYPE = [](std::string_view const a_type, bool const a_input, IOSockets &inputs, IOSockets &outputs, uint8_t socketId, const bool isRootPackage) {
+       SocketItemType siType;
+       bool isKnown = false;
+       if (isRootPackage){
+           siType = (a_input)?SocketItemType::eOutput:SocketItemType::eInput;
+           isKnown = true;
+       } else {
+           if (a_input){
+               if (socketId<inputs.size()){
+                   siType = inputs[socketId].sItemType;
+                   isKnown = true;
+               }
+           } else {
+               if (socketId<outputs.size()){
+                   siType = outputs[socketId].sItemType;
+                   isKnown = true;
+               }
+           }
+       }
+      if (isKnown){
+	  // if (true){
+		   //getSocketItemTypeBySocketId(uint8_t socketId, bool const a_input,&siType)
+		    //return (a_input)?m_inputs[socketId].sItemType:m_outputs[socketId].sItemType;
+    	  //allRight -siTypeReady
+      } else if (a_type == "i")
+        siType = SocketItemType::eInput;
+      else if (a_type == "o")
+    	siType = SocketItemType::eOutput;
+      else if (a_type == "d")
+    	siType = SocketItemType::eDynamic;
+      else
+    	  return a_input ? SocketItemType::eInput : SocketItemType::eOutput;
+	   return siType;
+    }(SOCKET_STRING_ITEM_TYPE,a_input,m_inputs,m_outputs,SOCKET_ID,isRootPackage);
+
+    //SocketItemType siType = (a_input)?m_inputs[SOCKET_ID].sItemType:m_outputs[SOCKET_ID].sItemType;
+    //auto const SOCKET_NAME = a_input ? m_inputs[SOCKET_ID].name : m_outputs[SOCKET_ID].name;
+    //!SocketItemType const SOCKET_ITEM_TYPE =  a_input ? m_inputs[SOCKET_ID].sItemType : m_outputs[SOCKET_ID].sItemType;
+    a_input ? addInput(SOCKET_TYPE, SOCKET_NAME, SOCKET_FLAGS, SOCKET_ITEM_TYPE) : addOutput(SOCKET_TYPE,SOCKET_NAME , SOCKET_FLAGS, SOCKET_ITEM_TYPE);
     a_socketCount++;
   };
 
   uint8_t inputsCount{}, outputsCount{};
-  for (auto &&socket : INPUTS) add_socket(socket, true, inputsCount);
-  for (auto &&socket : OUTPUTS) add_socket(socket, false, outputsCount);
+  for (auto &&socket : INPUTS) add_socket(socket, true, inputsCount, isRootPackage);
+  for (auto &&socket : OUTPUTS) add_socket(socket, false, outputsCount, isRootPackage);
 }
 
 void Element::setName(std::string const &a_name)
@@ -156,21 +252,45 @@ void Element::setName(std::string const &a_name)
   handleEvent(Event{ EventType::eElementNameChanged, EventNameChanged{ OLD_NAME, a_name } });
 }
 
-bool Element::addInput(ValueType const a_type, std::string const &a_name, uint8_t const a_flags)
+void Element::setDesc(std::string const &a_desc)
 {
-  if (m_inputs.size() + 1 > m_maxInputs) return false;
+    auto const OLD_DESC = m_desc;
+    m_desc = a_desc;
+}
 
-  IOSocket input{};
-  input.name = a_name;
-  input.type = a_type;
-  input.flags = a_flags;
+/*void Element::setRotate(bool const &rotate){
+	m_rotate = rotate;
+}
+void Element::setInvertH(bool const &invertH){
+	m_invertH = invertH;
+}*/
 
-  resetIOSocketValue(input);
-  m_inputs.emplace_back(input);
+bool Element::addInput(ValueType const a_type, std::string const &a_name, uint8_t const a_flags){
+	return addInput(a_type,a_name,a_flags,SocketItemType::eInput);
+}
 
-  handleEvent(Event{ EventType::eInputAdded, EventEmpty{} });
+size_t Element::addInputS(ValueType const a_type, std::string const &a_name, uint8_t const a_flags,SocketItemType sItemType){
+	  size_t index = m_inputs.size();
+	  if (index + 1 > m_maxInputs) return -1;
 
-  return true;
+	  IOSocket input{};
+	  input.name = a_name;
+	  input.type = a_type;
+	  input.flags = a_flags;
+	  input.sItemType = sItemType;
+	  input.inFlags = 1;
+
+	  resetIOSocketValue(input);
+	  m_inputs.emplace_back(input);
+
+	  handleEvent(Event{ EventType::eInputAdded, EventEmpty{} });
+
+	  return index;
+}
+
+bool Element::addInput(ValueType const a_type, std::string const &a_name, uint8_t const a_flags,SocketItemType sItemType)
+{
+	return (addInputS(a_type,a_name,a_flags,sItemType)>=0);
 }
 
 void Element::setInputName(uint8_t const a_input, std::string const &a_name)
@@ -195,21 +315,33 @@ void Element::clearInputs()
   m_inputs.clear();
 }
 
-bool Element::addOutput(ValueType const a_type, std::string const &a_name, uint8_t const a_flags)
+bool Element::addOutput(ValueType const a_type, std::string const &a_name, uint8_t const a_flags){
+	return addOutput(a_type,a_name,a_flags,SocketItemType::eOutput);
+}
+
+size_t Element::addOutputS(ValueType const a_type, std::string const &a_name, uint8_t const a_flags, SocketItemType sItemType){
+	  size_t index = m_outputs.size();
+	  if (index + 1 > m_maxOutputs) return -1;
+
+	  IOSocket output{};
+	  output.name = a_name;
+	  output.type = a_type;
+	  output.flags = a_flags;
+	  output.sItemType = sItemType;
+	  output.inFlags = 2;
+
+	  resetIOSocketValue(output);
+	  m_outputs.emplace_back(output);
+
+	  handleEvent(Event{ EventType::eOutputAdded, EventEmpty{} });
+
+	  return index;
+
+}
+
+bool Element::addOutput(ValueType const a_type, std::string const &a_name, uint8_t const a_flags, SocketItemType sItemType)
 {
-  if (m_outputs.size() + 1 > m_maxOutputs) return false;
-
-  IOSocket output{};
-  output.name = a_name;
-  output.type = a_type;
-  output.flags = a_flags;
-
-  resetIOSocketValue(output);
-  m_outputs.emplace_back(output);
-
-  handleEvent(Event{ EventType::eOutputAdded, EventEmpty{} });
-
-  return true;
+	return (addOutputS(a_type, a_name, a_flags, sItemType)>=0);
 }
 
 void Element::setOutputName(uint8_t const a_output, std::string const &a_name)
@@ -255,9 +387,9 @@ void Element::setIOValueType(bool const a_input, uint8_t const a_id, ValueType c
   handleEvent(Event{ EventType::eIOTypeChanged, EventIOTypeChanged{ a_input, a_id, OLD_TYPE, a_type } });
 }
 
-bool Element::connect(size_t const a_sourceId, uint8_t const a_outputId, uint8_t const a_inputId)
+bool Element::connect(size_t const a_sourceId, uint8_t const a_outputId, uint8_t const a_outputFlags, uint8_t const a_inputId, uint8_t const a_inputFlags)
 {
-  return m_package->connect(a_sourceId, a_outputId, m_id, a_inputId);
+  return m_package->connect(a_sourceId, a_outputId, a_outputFlags, m_id, a_inputId, a_inputFlags);
 }
 
 void Element::resetIOSocketValue(IOSocket &a_io)
@@ -266,6 +398,8 @@ void Element::resetIOSocketValue(IOSocket &a_io)
     case ValueType::eBool: a_io.value = false; break;
     case ValueType::eInt: a_io.value = 0; break;
     case ValueType::eFloat: a_io.value = 0.0f; break;
+    case ValueType::eByte: a_io.value = (uint8_t)0; break;
+    case ValueType::eWord64: a_io.value = (uint64_t)0; break;
   }
 }
 
@@ -297,6 +431,60 @@ void Element::setMaxOutputs(uint8_t const a_max)
 {
   if (a_max < m_minOutputs) return;
   m_maxOutputs = a_max;
+}
+
+void Element::consoleAppend(char *text){
+	spaghetti::log::info(text);
+	handleEvent(Event{ EventType::eConsoleTrig, EventConsoleTrig{ text } });
+}
+
+/*template<typename... Args>
+void Element::consoleAppendF(Args ... args){
+  std::stringstream sstream;
+  sstream << std::format(args...);
+  char *cstr = new char[sstream.str().length() + 1];
+  strcpy(cstr, sstream.str().c_str());
+   consoleAppend(cstr);
+}*/
+
+template<typename ... Args>
+void Element::consoleAppendF( const std::string& format, Args ... args )
+{
+	spaghetti::log::info(format, args ...);
+    size_t size = snprintf( nullptr, 0, format.c_str(), args ... ) + 1; // Extra space for '\0'
+    if( size <= 0 ){ throw std::runtime_error( "Error during formatting." ); }
+    std::unique_ptr<char[]> buf( new char[ size ] );
+    snprintf( buf.get(), size, format.c_str(), args ... );
+    std::string str = std::string( buf.get(), buf.get() + size - 1 ); // We don't want the '\0' inside
+    char *cstr = new char[str.length() + 1];
+    strcpy(cstr, str.c_str());
+    consoleAppend(cstr);
+}
+
+bool Element::isInvertH(){
+	return m_invertH;
+}
+void Element::setInvertH(bool const &invertH){
+	if (invertH){
+		m_invertH = true;
+	} else {
+		m_invertH = false;
+	}
+}
+
+bool Element::isRotate(){
+	return m_rotate;//EOrientation::eUp == orientation();
+}
+void Element::setRotate(bool const &rotate){
+	//m_orient = (n)?EOrientation::eUp:EOrientation::eRight;
+	if (rotate){
+		m_rotate = true;
+		//m_invertH = false;
+	} else {
+		m_rotate = false;
+		//m_invertH = false;
+	}
+	//updateRotation();
 }
 
 } // namespace spaghetti

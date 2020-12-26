@@ -33,6 +33,7 @@
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QTreeWidget>
+#include <QCheckBox>
 
 #include "spaghetti/logger.h"
 #include "spaghetti/package.h"
@@ -56,6 +57,8 @@ bool value_type_allowed(uint8_t const a_flags, ValueType const a_type)
     case ValueType::eBool: return a_flags & Element::IOSocket::eCanHoldBool;
     case ValueType::eInt: return a_flags & Element::IOSocket::eCanHoldInt;
     case ValueType::eFloat: return a_flags & Element::IOSocket::eCanHoldFloat;
+    case ValueType::eByte: return a_flags & Element::IOSocket::eCanHoldByte;
+    case ValueType::eWord64: return a_flags & Element::IOSocket::eCanHoldWord64;
   }
 
   assert(false);
@@ -66,8 +69,10 @@ ValueType first_available_type_for_flags(uint8_t const a_flags)
   if (a_flags & Element::IOSocket::eCanHoldBool) return ValueType::eBool;
   if (a_flags & Element::IOSocket::eCanHoldInt) return ValueType::eInt;
   if (a_flags & Element::IOSocket::eCanHoldFloat) return ValueType::eFloat;
-
-  assert(false);
+  if (a_flags & Element::IOSocket::eCanHoldByte) return ValueType::eByte;
+  if (a_flags & Element::IOSocket::eCanHoldWord64) return ValueType::eWord64;
+  return ValueType::eBool;
+  //assert(false);
 }
 // clang-format off
 #ifdef _MSC_VER
@@ -97,6 +102,10 @@ Node::~Node()
   }
 }
 
+int Node::getRotation(){
+	return m_rotation;
+}
+
 QRectF Node::boundingRect() const
 {
   return m_boundingRect;
@@ -109,6 +118,10 @@ void Node::paint(QPainter *a_painter, QStyleOptionGraphicsItem const *a_option, 
 
   paintBorder(a_painter);
   if (!m_centralWidget || !m_centralWidget->isVisible()) paintIcon(a_painter);
+}
+
+void Node::pvShowProperties(){
+    m_packageView->showProperties();
 }
 
 QVariant Node::itemChange(QGraphicsItem::GraphicsItemChange a_change, QVariant const &a_value)
@@ -178,11 +191,29 @@ void Node::advance(int a_phase)
   update();
 }
 
+void Node::updateRotation(){
+	  if (m_element->isRotate()){
+		  m_rotation = -90;
+		  setRotation(m_rotation);
+	  } else {
+		  m_rotation = 0;
+		  setRotation(m_rotation);
+	  }
+}
+
+void Node::updateInversion(){
+	calculateBoundingRect();
+}
+
 void Node::setElement(Element *const a_element)
 {
   if (m_element) return;
 
   m_element = a_element;
+
+  updateRotation();
+
+
 
   if (m_type == Type::eElement) m_element->registerEventHandler([this](Event const &a_event) { handleEvent(a_event); });
 
@@ -193,11 +224,13 @@ void Node::setElement(Element *const a_element)
     case Type::eElement:
       for (size_t i = 0; i < INPUTS.size(); ++i) {
         QString const NAME{ QString::fromStdString(INPUTS[i].name) };
-        addSocket(SocketType::eInput, static_cast<uint8_t>(i), NAME, INPUTS[i].type);
+        //addSocket(SocketType::eInput, static_cast<uint8_t>(i), NAME, INPUTS[i].type);
+        addSocket(IOSocketsType::eInputs, static_cast<uint8_t>(i), NAME, INPUTS[i].type, INPUTS[i].sItemType);
       }
       for (size_t i = 0; i < OUTPUTS.size(); ++i) {
         QString const NAME{ QString::fromStdString(OUTPUTS[i].name) };
-        addSocket(SocketType::eOutput, static_cast<uint8_t>(i), NAME, OUTPUTS[i].type);
+        addSocket(IOSocketsType::eOutputs, static_cast<uint8_t>(i), NAME, OUTPUTS[i].type,OUTPUTS[i].sItemType);
+        //addSocket(OUTPUTS[i].sItemType, static_cast<uint8_t>(i), NAME, OUTPUTS[i].type);
       }
 
       m_element->setPosition(x(), y());
@@ -209,13 +242,13 @@ void Node::setElement(Element *const a_element)
     case Type::eInputs:
       for (size_t i = 0; i < INPUTS.size(); ++i) {
         QString const NAME{ QString::fromStdString(INPUTS[i].name) };
-        addSocket(SocketType::eOutput, static_cast<uint8_t>(i), NAME, INPUTS[i].type);
+        addSocket(IOSocketsType::eOutputs, static_cast<uint8_t>(i), NAME, INPUTS[i].type,INPUTS[i].sItemType);
       }
       break;
     case Type::eOutputs:
       for (size_t i = 0; i < OUTPUTS.size(); ++i) {
         QString const NAME{ QString::fromStdString(OUTPUTS[i].name) };
-        addSocket(SocketType::eInput, static_cast<uint8_t>(i), NAME, OUTPUTS[i].type);
+        addSocket(IOSocketsType::eInputs, static_cast<uint8_t>(i), NAME, OUTPUTS[i].type,OUTPUTS[i].sItemType);
       }
       break;
   }
@@ -223,6 +256,14 @@ void Node::setElement(Element *const a_element)
   elementSet();
 
   calculateBoundingRect();
+}
+
+void Node::setDesc(QString const &a_desc)
+{
+   m_desc =  a_desc;
+   if (m_element) {
+     m_element->setDesc(a_desc.toStdString());
+   }
 }
 
 void Node::setName(QString const &a_name)
@@ -299,8 +340,9 @@ void Node::paintBorder(QPainter *const a_painter)
 
   pen.setColor(get_color(Color::eSocketBorder));
   pen.setWidth(2);
-  QColor color{ 105, 105, 105, 128 };
-  QBrush brush{ color };
+  //QColor color{ 105, 105, 105, 128 };
+
+  QBrush brush{ m_color };
   a_painter->setPen(Qt::NoPen);
   a_painter->setBrush(brush);
   a_painter->drawRect(rect);
@@ -343,9 +385,53 @@ void Node::paintIcon(QPainter *const a_painter)
   a_painter->drawPixmap(static_cast<int>(m_centralWidgetPosition.x()), Y, WIDTH, HEIGHT, m_icon);
 }
 
+void Node::showOrientationProperties() {
+	  propertiesInsertTitle("Orientation");
+
+	  int row = m_properties->rowCount();
+	  m_properties->insertRow(row);
+
+	  QTableWidgetItem *itemRot{};
+
+	  itemRot = new QTableWidgetItem{ "Rotate" };
+	  itemRot->setFlags(itemRot->flags() & ~Qt::ItemIsEditable);
+	  m_properties->setItem(row, 0, itemRot);
+
+	  auto const constElem = static_cast<Element *>(m_element);
+	  bool const currentRot = constElem->isRotate();
+
+	  QCheckBox *const valueRot = new QCheckBox;
+	  m_properties->setCellWidget(row, 1, valueRot);
+	  valueRot->setChecked(currentRot);
+
+	  QObject::connect(valueRot, &QCheckBox::stateChanged, [constElem,this](int a_state) { constElem->setRotate(a_state == 2); updateRotation();});
+
+	  row = m_properties->rowCount();
+	  m_properties->insertRow(row);
+
+	  QTableWidgetItem *itemInv{};
+
+	  itemInv = new QTableWidgetItem{ "InvertH" };
+	  itemInv->setFlags(itemInv->flags() & ~Qt::ItemIsEditable);
+	  m_properties->setItem(row, 0, itemInv);
+
+	  //auto const constElem = static_cast<Element *>(m_element);
+	  bool const currentInv = constElem->isInvertH();
+
+	  QCheckBox *const valueInv = new QCheckBox;
+	  m_properties->setCellWidget(row, 1, valueInv);
+	  valueInv->setChecked(currentInv);
+
+	  QObject::connect(valueInv, &QCheckBox::stateChanged, [constElem,this](int a_state) { constElem->setInvertH(a_state == 2); updateInversion();});
+
+}
+
 void Node::showProperties()
 {
   showCommonProperties();
+  showOrientationProperties();
+
+
   switch (m_type) {
     case Type::eElement:
       showIOProperties(IOSocketsType::eInputs);
@@ -367,29 +453,36 @@ void Node::handleEvent(Event const &a_event)
       calculateBoundingRect();
       break;
     }
+      case EventType::eConsoleTrig: {
+        auto const &EVENT = std::get<EventConsoleTrig>(a_event.payload);
+        char *cstr = new char[EVENT.text.length() + 1];
+        strcpy(cstr, EVENT.text.c_str());
+        m_packageView->consoleAppend(cstr);
+        break;
+      }
     case EventType::eIOTypeChanged: break;
     case EventType::eInputAdded: {
       auto const &INPUTS = m_element->inputs();
       auto const SIZE = inputs().size();
       auto const &INPUT = INPUTS.back();
-      addSocket(SocketType::eInput, static_cast<uint8_t>(SIZE), QString::fromStdString(INPUT.name), INPUT.type);
+      addSocket(IOSocketsType::eInputs, static_cast<uint8_t>(SIZE), QString::fromStdString(INPUT.name), INPUT.type,INPUT.sItemType);
       calculateBoundingRect();
       break;
     }
     case EventType::eInputRemoved:
-      removeSocket(SocketType::eInput);
+      removeSocket(IOSocketsType::eInputs);
       calculateBoundingRect();
       break;
     case EventType::eOutputAdded: {
       auto const &OUTPUTS = m_element->outputs();
       auto const SIZE = outputs().size();
       auto const &OUTPUT = OUTPUTS.back();
-      addSocket(SocketType::eOutput, static_cast<uint8_t>(SIZE), QString::fromStdString(OUTPUT.name), OUTPUT.type);
+      addSocket(IOSocketsType::eOutputs, static_cast<uint8_t>(SIZE), QString::fromStdString(OUTPUT.name), OUTPUT.type, OUTPUT.sItemType);
       calculateBoundingRect();
       break;
     }
     case EventType::eOutputRemoved:
-      removeSocket(SocketType::eOutput);
+      removeSocket(IOSocketsType::eOutputs);
       calculateBoundingRect();
       break;
   }
@@ -404,6 +497,7 @@ void Node::showCommonProperties()
   int const ID{ static_cast<int>(m_element->id()) };
   QString const TYPE{ QString::fromLocal8Bit(m_element->type()) };
   QString const NAME{ QString::fromStdString(m_element->name()) };
+  QString const DESCRIPTION{ QString::fromStdString(m_element->description()) };
 
   int row = m_properties->rowCount();
   m_properties->insertRow(row);
@@ -435,6 +529,17 @@ void Node::showCommonProperties()
   QLineEdit *nameEdit = new QLineEdit{ NAME };
   m_properties->setCellWidget(row, 1, nameEdit);
   QObject::connect(nameEdit, &QLineEdit::textChanged, [this](QString const &a_text) { setName(a_text); });
+
+  row = m_properties->rowCount();
+  m_properties->insertRow(row);
+  item = new QTableWidgetItem{ "Description" };
+  item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+  m_properties->setItem(row, 0, item);
+
+  QLineEdit *descEdit = new QLineEdit{ DESCRIPTION };
+  m_properties->setCellWidget(row, 1, descEdit);
+  QObject::connect(descEdit, &QLineEdit::textChanged, [this](QString const &a_text) { setDesc(a_text); });
+
 }
 
 void Node::showIOProperties(IOSocketsType const a_type)
@@ -496,6 +601,10 @@ void Node::showIOProperties(IOSocketsType const a_type)
       comboBox->addItem(ValueType_to_QString(ValueType::eInt), static_cast<int>(ValueType::eInt));
     if (IO.flags & Element::IOSocket::eCanHoldFloat)
       comboBox->addItem(ValueType_to_QString(ValueType::eFloat), static_cast<int>(ValueType::eFloat));
+    if (IO.flags & Element::IOSocket::eCanHoldByte)
+      comboBox->addItem(ValueType_to_QString(ValueType::eByte), static_cast<int>(ValueType::eByte));
+    if (IO.flags & Element::IOSocket::eCanHoldWord64)
+      comboBox->addItem(ValueType_to_QString(ValueType::eWord64), static_cast<int>(ValueType::eWord64));
     int const INDEX{ comboBox->findData(static_cast<int>(IO.type)) };
     comboBox->setCurrentIndex(INDEX);
     m_properties->setCellWidget(row, 1, comboBox);
@@ -588,14 +697,20 @@ void Node::calculateBoundingRect()
   if (m_centralWidget) m_centralWidget->setPos(m_centralWidgetPosition);
 
   qreal yOffset{ ROUNDED_SOCKET_SIZE + NAME_OFFSET };
+  qreal sinp = 0.0;
+  qreal sout = width;
+  if (m_element && (EOrientation::eLeft == m_element->orientation() || EOrientation::eDown == m_element->orientation())){
+	  sinp = width;
+	  sout = 0.0;
+  }
   for (auto &&input : m_inputs) {
-    input->setPos(0.0, yOffset);
+    input->setPos(sinp, yOffset);
     yOffset += ROUNDED_SOCKET_SIZE;
   }
 
   yOffset = ROUNDED_SOCKET_SIZE + NAME_OFFSET;
   for (auto &&output : m_outputs) {
-    output->setPos(width, yOffset);
+    output->setPos(sout, yOffset);
     yOffset += ROUNDED_SOCKET_SIZE;
   }
 
@@ -626,7 +741,7 @@ QString nodetype2string(Node::Type a_type)
 void Node::addInput()
 {
   uint8_t const SIZE{ static_cast<uint8_t>(m_element->inputs().size()) };
-  QString const INPUT_NAME{ QString("#%1").arg(SIZE + 1) };
+  QString const INPUT_NAME{ QString("#%1").arg(SIZE) };
 
   ValueType const TYPE{ first_available_type_for_flags(m_element->defaultNewInputFlags()) };
   m_element->addInput(TYPE, INPUT_NAME.toStdString(), m_element->defaultNewInputFlags());
@@ -651,7 +766,7 @@ void Node::setInputName(uint8_t const a_socketId, QString const &a_name)
 void Node::addOutput()
 {
   uint8_t const SIZE{ static_cast<uint8_t>(m_element->outputs().size()) };
-  QString const OUTPUT_NAME{ QString("#%1").arg(SIZE + 1) };
+  QString const OUTPUT_NAME{ QString("#%1").arg(SIZE) };
 
   ValueType const TYPE{ first_available_type_for_flags(m_element->defaultNewOutputFlags()) };
   m_element->addOutput(TYPE, OUTPUT_NAME.toStdString(), m_element->defaultNewOutputFlags());
@@ -673,13 +788,14 @@ void Node::setOutputName(uint8_t const a_socketId, QString const &a_name)
   m_packageView->showProperties();
 }
 
-void Node::addSocket(SocketType const a_type, uint8_t const a_id, QString const &a_name, ValueType const a_valueType)
+void Node::addSocket(IOSocketsType ioType, uint8_t const a_id, QString const &a_name, ValueType const a_valueType, SocketType const a_type)
 {
-  auto const socket = new SocketItem{ this, a_type };
+  auto const socket = new SocketItem{ this, ioType, a_type };
   socket->setElementId(m_type == Type::eElement ? m_element->id() : 0);
   socket->setSocketId(a_id);
 
   socket->setName(a_name);
+  socket->setToolTip(a_name);
   socket->setValueType(a_valueType);
 
   if (m_mode == Mode::eIconified)
@@ -687,20 +803,20 @@ void Node::addSocket(SocketType const a_type, uint8_t const a_id, QString const 
   else
     socket->showName();
 
-  if (a_type == SocketType::eInput)
+  if (ioType == IOSocketsType::eInputs)
     m_inputs.push_back(socket);
   else
     m_outputs.push_back(socket);
 }
 
-void Node::removeSocket(Node::SocketType const a_type)
+void Node::removeSocket(IOSocketsType const ioType)
 {
-  switch (a_type) {
-    case SocketType::eInput:
+  switch (ioType) {
+    case IOSocketsType::eInputs:
       delete m_inputs.back();
       m_inputs.pop_back();
       break;
-    case SocketType::eOutput:
+    case IOSocketsType::eOutputs:
       delete m_outputs.back();
       m_outputs.pop_back();
       break;

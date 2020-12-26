@@ -46,6 +46,8 @@ inline QString ValueType_to_QString(ValueType const a_type)
     case ValueType::eBool: return "Bool";
     case ValueType::eInt: return "Int";
     case ValueType::eFloat: return "Float";
+    case ValueType::eByte: return "Byte";
+    case ValueType::eWord64: return "Word64";
   }
   return "Unknown";
 }
@@ -57,6 +59,10 @@ class SPAGHETTI_API Node : public QGraphicsItem {
   explicit Node(QGraphicsItem *const a_parent = nullptr);
   ~Node() override;
 
+  int getRotation();
+  void updateRotation();
+  void updateInversion();
+
   int type() const override { return NODE_TYPE; }
   QRectF boundingRect() const override;
   void paint(QPainter *a_painter, QStyleOptionGraphicsItem const *a_option, QWidget *a_widget) override;
@@ -65,8 +71,8 @@ class SPAGHETTI_API Node : public QGraphicsItem {
   void advance(int a_phase) override;
 
   enum class Type { eElement, eInputs, eOutputs };
-  enum class IOSocketsType { eInputs, eOutputs };
-  using SocketType = SocketItem::Type;
+
+  using SocketType = SocketItemType;
 
   void setType(Type const a_type) { m_type = a_type; }
 
@@ -76,7 +82,9 @@ class SPAGHETTI_API Node : public QGraphicsItem {
   void setElement(Element *const a_element);
 
   void setName(QString const &a_name);
+  void setDesc(QString const &a_desc);
   QString name() const { return m_name; }
+  QString description() const { return m_desc; }
 
   void setPath(QString const &a_path) { m_path = a_path; }
   QString path() const { return m_path; }
@@ -108,28 +116,32 @@ class SPAGHETTI_API Node : public QGraphicsItem {
   virtual bool open() { return false; }
 
   void showCommonProperties();
+  void showOrientationProperties();
   void showIOProperties(IOSocketsType const a_type);
 
   void calculateBoundingRect();
 
   void changeInputName(int const a_id, QString const &a_name);
   void changeOutputName(int const a_id, QString const &a_name);
-  void addSocket(SocketType const a_type, uint8_t const a_id, QString const &a_name, ValueType const a_valueType);
-  void removeSocket(SocketType const a_type);
+  virtual void addSocket(IOSocketsType ioType, uint8_t const a_id, QString const &a_name, ValueType const a_valueType, SocketType const a_type);
+  void removeSocket(IOSocketsType ioType);
   void setSocketType(IOSocketsType const a_socketType, uint8_t const a_socketId, ValueType const a_type);
 
  protected:
   void setCentralWidget(QGraphicsItem *a_centralWidget);
   void propertiesInsertTitle(QString const &a_title);
   void changeIOName(IOSocketsType const a_type, int const a_id, QString const &a_name);
-
+  virtual void addInput();
+  virtual void addOutput();
+  virtual void removeInput();
+  virtual void removeOutput();
  private:
-  void addInput();
-  void removeInput();
+
+
   void setInputName(uint8_t const a_socketId, QString const &a_name);
 
-  void addOutput();
-  void removeOutput();
+
+
   void setOutputName(uint8_t const a_socketId, QString const &a_name);
 
   void updateOutputs();
@@ -139,12 +151,15 @@ class SPAGHETTI_API Node : public QGraphicsItem {
   QTableWidget *m_properties{};
   Element *m_element{};
   PackageView *m_packageView{};
+  void pvShowProperties();
+  QColor m_color{ 105, 105, 105, 128 };
 
  private:
   enum class Mode { eIconified, eExpanded } m_mode{};
   Type m_type{};
   bool m_showName{ true };
   QString m_name{};
+  QString m_desc{};
   QString m_path{};
   QString m_iconPath{};
   QPixmap m_icon{};
@@ -155,6 +170,7 @@ class SPAGHETTI_API Node : public QGraphicsItem {
   Sockets m_outputs{};
 
   QFont m_nameFont{};
+  int m_rotation;
 };
 
 } // namespace spaghetti

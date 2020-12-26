@@ -39,14 +39,15 @@
 
 namespace spaghetti {
 
-SocketItem::SocketItem(Node *const a_node, Type const a_type)
+SocketItem::SocketItem(Node *const a_node, IOSocketsType ioType, Type const a_type)
   : QGraphicsItem{ a_node }
   , m_node{ a_node }
   , m_type{ a_type }
+  , m_ioType{ ioType }
 {
   m_font.setFamily("Consolas");
   m_font.setPointSize(10);
-
+m_multiuse = false;//= false;
   setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsFocusable |
            QGraphicsItem::ItemSendsScenePositionChanges);
   setAcceptHoverEvents(true);
@@ -58,6 +59,12 @@ SocketItem::SocketItem(Node *const a_node, Type const a_type)
     setCursor(Qt::OpenHandCursor);
   else
     setAcceptDrops(true);
+}
+
+Node* const SocketItem::node() { return m_node; }
+
+void SocketItem::setMultiuse(bool const muse){
+    m_multiuse = muse;
 }
 
 QRectF SocketItem::boundingRect() const
@@ -89,23 +96,36 @@ void SocketItem::paint(QPainter *a_painter, QStyleOptionGraphicsItem const *a_op
   //    brush.setColor(config.getColor(Config::Color::eSocketInput));
   //  else if (m_type == Type::eOutput)
   //    brush.setColor(config.getColor(Config::Color::eSocketOutput));
-  brush.setStyle(Qt::SolidPattern);
+  if (m_type == Type::eDynamic){
+	  brush.setStyle(Qt::Dense5Pattern);
+  } else {
+	  brush.setStyle(Qt::SolidPattern);
+  }
+
 
   a_painter->setPen(pen);
   a_painter->setBrush(brush);
-  if (m_type == Type::eOutput)
-    a_painter->drawEllipse(rect);
-  else
+  if (m_type == Type::eOutput) {
+      a_painter->drawEllipse(rect);
+  } else if (m_type == Type::eDynamic){
+	  a_painter->drawRect(rect);
+	  a_painter->drawEllipse(rect);
+  } else {
     a_painter->drawRect(rect);
+  }
 
   if (m_used) {
     a_painter->save();
     a_painter->setPen(Qt::NoPen);
     a_painter->setBrush(pen.color());
-    if (m_type == Type::eOutput)
+    if (m_type == Type::eOutput){
       a_painter->drawEllipse(rect.adjusted(4, 4, -4, -4));
-    else
+    } else if (m_type == Type::eDynamic){
+	  a_painter->drawRect(rect.adjusted(4, 4, -4, -4));
+	  a_painter->drawEllipse(rect.adjusted(4, 4, -4, -4));
+    } else {
       a_painter->drawRect(rect.adjusted(4, 4, -4, -4));
+    }
     a_painter->restore();
   }
 
@@ -117,7 +137,7 @@ void SocketItem::paint(QPainter *a_painter, QStyleOptionGraphicsItem const *a_op
     QFontMetrics const metrics{ m_font };
     int const FONT_HEIGHT = metrics.height();
 
-    if (m_type == Type::eInput)
+    if (IOSocketsType::eInputs == ioType())
       a_painter->drawText(static_cast<int>(rect.width()) - 4, (FONT_HEIGHT / 2) - metrics.strikeOutPos(), m_name);
     else
       a_painter->drawText(-metrics.width(m_name) - SIZE + SIZE / 3, (FONT_HEIGHT / 2) - metrics.strikeOutPos(), m_name);
@@ -146,7 +166,7 @@ void SocketItem::dragEnterEvent(QGraphicsSceneDragDropEvent *a_event)
 {
   Q_UNUSED(a_event);
 
-  if (m_used) {
+  if (m_used && !m_multiuse) {
     a_event->ignore();
     return;
   }
@@ -200,7 +220,7 @@ void SocketItem::dropEvent(QGraphicsSceneDragDropEvent *a_event)
   auto const package = packageView->package();
   auto const from = linkItem->from();
 
-  package->connect(from->elementId(), from->socketId(), m_elementId, m_socketId);
+  package->connect(from->elementId(), from->socketId(), from->ioFlags(), m_elementId, m_socketId, ioFlags());
 
   setSignal(linkItem->isSignalOn());
 }
@@ -287,9 +307,12 @@ void SocketItem::setColors(QColor const a_signalOff, QColor const a_signalOn)
 
 void SocketItem::setSignal(bool const a_signal)
 {
+  bool delta = a_signal != m_isSignalOn;
+  delta = delta || (m_isSignalOn != m_isSignalOnPrev);
+  m_isSignalOnPrev = m_isSignalOn;
   m_isSignalOn = a_signal;
 
-  if (m_type == Type::eOutput)
+  if (m_type == Type::eOutput && delta)// break recursion
     for (LinkItem *const link : m_links) link->setSignal(a_signal);
 }
 
@@ -318,13 +341,15 @@ void SocketItem::disconnect(SocketItem *const a_other)
 
   auto const FROM_ID = elementId();
   auto const FROM_SOCKET_ID = socketId();
+  auto const FROM_IOFLAGS = ioFlags();
   auto const TO_ID = a_other->elementId();
   auto const TO_SOCKET_ID = a_other->socketId();
+  auto const TO_IOFLAGS = a_other->ioFlags();
 
   auto const packageView = m_node->packageView();
   auto const package = packageView->package();
 
-  package->disconnect(FROM_ID, FROM_SOCKET_ID, TO_ID, TO_SOCKET_ID);
+  package->disconnect(FROM_ID, FROM_SOCKET_ID, FROM_IOFLAGS, TO_ID, TO_SOCKET_ID, TO_IOFLAGS);
 
   removeLink(link);
   a_other->removeLink(link);
@@ -367,7 +392,9 @@ void SocketItem::setValueType(ValueType const a_type)
   switch (m_valueType) {
     case ValueType::eBool: setColors(get_color(Color::eBoolSignalOff), get_color(Color::eBoolSignalOn)); break;
     case ValueType::eFloat: setColors(get_color(Color::eFloatSignalOn), get_color(Color::eFloatSignalOff)); break;
-    case ValueType::eInt: setColors(get_color(Color::eIntegerSignalOn), get_color(Color::eIntegerSignalOn)); break;
+    case ValueType::eInt: setColors(get_color(Color::eIntegerSignalOn), get_color(Color::eIntegerSignalOff)); break;
+    case ValueType::eByte: setColors(get_color(Color::eByteSignalOn), get_color(Color::eByteSignalOff)); break;
+    case ValueType::eWord64: setColors(get_color(Color::eWord64SignalOn), get_color(Color::eWord64SignalOff)); break;
   }
 }
 

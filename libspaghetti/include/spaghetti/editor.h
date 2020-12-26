@@ -28,6 +28,7 @@
 #include <QMap>
 
 #include <spaghetti/api.h>
+#include "spaghetti/registry.h"
 
 namespace Ui {
 class Editor;
@@ -42,17 +43,20 @@ namespace spaghetti {
 class Package;
 class PackageView;
 
-class SPAGHETTI_API Editor final : public QMainWindow {
+class SPAGHETTI_API Editor /*final*/ : public QMainWindow {
   Q_OBJECT
 
  public:
-  explicit Editor(QWidget *const a_parent = nullptr);
+  explicit Editor(QWidget *const a_parent = nullptr, Registry* const reg = nullptr);
   ~Editor() override;
+
+  void consoleAppend(char *text);
 
   void tabCloseRequested(int const a_index);
   void tabChanged(int const a_index);
 
   void populateLibrary();
+  void reloadAll();
   void addElement(QString const &a_category, QString const &a_name, QString const &a_type, QString const &a_icon);
   void addPackage(QString const &a_category, QString const &a_filename, QString const &a_path, QString const &a_icon);
 
@@ -67,8 +71,9 @@ class SPAGHETTI_API Editor final : public QMainWindow {
 
   QListView* elementsList();
   QTableWidget* propertiesTable();
-
+  Registry& RegistryGet();
  protected:
+  Registry* m_registry;
   void showEvent(QShowEvent *a_event) override;
 
   PackageView *packageViewForIndex(int const a_index = -1) const;

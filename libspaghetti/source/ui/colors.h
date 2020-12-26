@@ -45,6 +45,10 @@ enum class Color {
   eFloatSignalOn,
   eLink,
   eSelected,
+  eWord64SignalOn,
+  eWord64SignalOff,
+  eByteSignalOn,
+  eByteSignalOff,
   eCount
 };
 

@@ -28,6 +28,9 @@
 
 #include "colors.h"
 #include "spaghetti/socket_item.h"
+#include "spaghetti/node.h"
+//#include "spaghetti/element.h"
+#include "spaghetti/logger.h"
 
 namespace spaghetti {
 
@@ -146,6 +149,56 @@ void LinkItem::setSignal(bool const a_signal)
   if (m_to) m_to->setSignal(a_signal);
 }
 
+/*template<typename ... Args>
+void LinkItem::consoleAppendF( const std::string& format, Args ... args )
+{
+	//spaghetti::log::info(format, args ...);
+    size_t size = snprintf( nullptr, 0, format.c_str(), args ... ) + 1; // Extra space for '\0'
+    if( size <= 0 ){ throw std::runtime_error( "Error during formatting." ); }
+    std::unique_ptr<char[]> buf( new char[ size ] );
+    snprintf( buf.get(), size, format.c_str(), args ... );
+    std::string str = std::string( buf.get(), buf.get() + size - 1 ); // We don't want the '\0' inside
+    char *cstr = new char[str.length() + 1];
+    strcpy(cstr, str.c_str());
+    m_from->node()->element()->consoleAppend(cstr);
+}*/
+
+template<typename ... Args>
+void LinkItem::consoleAppendF( const std::string& format, Args ... args )
+  {
+      char buff[300];
+      std::string sformat = format+"\n";
+      //sprintf(buff,format.c_str(), args ...);
+      //auto formatter = std::make_unique<spdlog::pattern_formatter>();
+      //std::stringstream sstr;
+      //std::streambuf sbuf;
+      //sstr << std::format(format,args ...);
+
+      //outbuf ob;
+      //std::streambuf *sb = std::cout.rdbuf(&sbuf);
+
+      // do some work here
+      //spaghetti::log::info(format.c_str(), args ...);
+      spdlog::level::level_enum lvl =  spdlog::level::info;
+      const std::string nme = "xx";
+      spdlog::details::log_msg log_msg(&nme, lvl);
+      log_msg.raw.write(sformat, args...);
+      //spdlog::pattern_time_type pattern_time = spdlog::pattern_time_type::local;
+      //auto formatter = std::make_shared<spdlog::pattern_formatter>(format, pattern_time);
+      //formatter->format(log_msg);
+      //std::ostringstream ss;
+      //std::ostream ss;
+      //fmt::print(ss,format,args ...);
+      //ss << log_msg.raw;
+      strcpy(buff, log_msg.raw.c_str());
+      m_from->node()->element()->consoleAppend(buff);
+      //consoleAppend(buff);
+      //consoleAppend(ss.str().c_str());
+
+      // make sure to restore the original so we don't get a crash on close!
+      //std::cout.rdbuf(sb);
+  }
+
 void LinkItem::trackNodes()
 {
   prepareGeometryChange();
@@ -168,15 +221,90 @@ void LinkItem::trackNodes()
 
   QPointF c1{}, c2{};
 
-  double dist{ fabs(m_toPoint.x()) * 0.5 };
+  double distW{ fabs(m_toPoint.x()) * 0.5 };
+  double distH{ fabs(m_toPoint.y()) * 0.5 };
 
-  c1.setX(dist);
-
-  c2.setX(m_toPoint.x() - dist);
-  c2.setY(m_toPoint.y());
+  bool fromOrientU = m_from->node()->getRotation()==-90;
+  bool toOrientU = m_to!=NULL && m_to->node()->getRotation()==-90;
+  bool fromOrientL = EOrientation::eLeft == m_from->node()->element()->orientation();
+  bool fromInp = m_from->ioType() == IOSocketsType::eInputs;
+  bool toInp = m_to!=NULL && m_to->ioType() == IOSocketsType::eInputs;
 
   m_path = QPainterPath{};
-  m_path.cubicTo(c1, c2, m_toPoint);
+  bool cubic = true;
+  std::string slog = "none:";
+  //!TODO! about 8 cases to handle - dependance of from/to, inp/out/, direction etc
+  /*if (fromOrientU && !toInp) {//u2l
+	  c1.setX(0);
+	  if (m_toPoint.y()>0){
+		  c1.setY(distH);
+	  } else {
+		  c1.setY(0-distH);
+	  }
+	  if (m_toPoint.x()>0){
+		  c1.setX(distW);
+	  } else {
+		  c1.setX(0-distW);
+	  }
+	  c2.setY(0);
+	  //cubic = false;
+	  //m_path.arcTo(m_boundingRect,0,-30);
+
+  } else*/ if (fromOrientU) {//u2r
+	  if (fromInp){
+		  c1.setX(0);
+		  c1.setY(distH);
+		  c2.setX(0);
+		  c2.setY(distH);
+	  } else {
+		  c1.setX(0);
+		  c1.setY(0-distH);
+		  c2.setX(0);
+		  c2.setY(0-distH);
+	  }
+  } else if (toOrientU) {//u2r
+	  if (fromInp){
+		  c1.setX(0-distW);
+		  c1.setY(0);
+		  c2.setX(0-distW);
+		  c2.setY(0);
+	  } else {
+		  c1.setX(distW);
+		  c1.setY(0);
+		  c2.setX(distW);
+		  c2.setY(0);
+	  }
+ /* } else if (toOrientU) {
+	  c1.setY(0);
+	  //c1.setY(0);
+	  if (m_toPoint.x()>0){
+		  c1.setX(distW);
+	  } else {
+		  c1.setX(0-distW);
+	  }
+	  c2.setX(0);
+	  if (m_toPoint.y()>0){
+		  c2.setY(m_toPoint.y()-distH);
+	  } else {
+		  c2.setY(0-distH);
+	  }*/
+  } else {//standard case - "from" oriented right and "to" oriented right
+	  if (fromOrientL){
+		  c1.setX(0-distW);
+		  c2.setX(m_toPoint.x() + distW);
+		  c2.setY(m_toPoint.y());
+	  } else {
+		  c1.setX(distW);
+		  c2.setX(m_toPoint.x() - distW);
+		  c2.setY(m_toPoint.y());
+		  slog="stand:";
+	  }
+  }
+      slog += "{},{},{}";
+	  m_path.cubicTo(c1, c2, m_toPoint);
+	  //m_from->node()->element()->
+	  //!TODO! memory acc problems (global ref invalid?)
+	  //consoleAppendF("{},{},{},{},c1.x{},c1.y{},c2.x{},c2.y{}",linkItemPos.x(),linkItemPos.y(),m_toPoint.x(),m_toPoint.y(),c1.x(),c1.y(),c2.x(),c2.y());
 
   QPainterPathStroker stroker{};
   stroker.setWidth(15);

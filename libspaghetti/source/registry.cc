@@ -79,11 +79,13 @@ struct Registry::PIMPL {
   fs::path user_packages_path{};
 };
 
-Registry &Registry::get()
+/*Registry &Registry::get()
 {
   static Registry s_registry{};
   return s_registry;
-}
+}*/
+
+Registry* Registry::m_instance1 = nullptr;
 
 Registry::~Registry() = default;
 
@@ -104,7 +106,7 @@ Registry::Registry()
   fs::path const APP_DATA_PATH{ ss.str() };
 
   fs::path const SYSTEM_PLUGINS_PATH{ fs::canonical(fs::path{ APP_PATH.string() + "/../Plugins" }) };
-  fs::path const SYSTEM_PACKAGES_PATH{ fs::canonical(fs::path{ APP_PATH.string() + "/../Packages" }) };
+  fs::path const SYSTEM_PACKAGES_PATH{ fs::canonical(fs::path{ APP_PATH.string() + "/../../Packages" }) };
 
   fs::path const USER_PLUGINS_PATH{ fs::absolute(APP_DATA_PATH / "Spaghetti/Plugins") };
   fs::path const USER_PACKAGES_PATH{ fs::absolute(APP_DATA_PATH / "Spaghetti/Packages") };
@@ -112,8 +114,8 @@ Registry::Registry()
   fs::path const HOME_PATH{ getenv("HOME") };
 
   fs::path const LIB_PATH{ fs::canonical(fs::path{ APP_PATH.string() + "/../lib" }) };
-  fs::path const PACKAGES_PATH{ fs::canonical(fs::path{ APP_PATH.string() + "/../packages" }) };
-  fs::path const SYSTEM_PLUGINS_PATH{ LIB_PATH / "spaghetti" };
+  fs::path const PACKAGES_PATH{ fs::canonical(fs::path{ APP_PATH.string() + "/../../packages" }) };
+  fs::path const SYSTEM_PLUGINS_PATH{ APP_PATH.string() + "/../plugins" };
   fs::path const SYSTEM_PACKAGES_PATH{ PACKAGES_PATH };
 
   fs::path const USER_PLUGINS_PATH{ fs::absolute(HOME_PATH / ".config/spaghetti/plugins") };

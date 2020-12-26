@@ -67,7 +67,11 @@ std::array<QColor, static_cast<size_t>(Color::eCount)> const g_colors{ {
                             //    { 232, 0, 99, 255 },    // Color::eFloatSignalOn
     { 254, 144, 50, 255 },  // Color::eFloatSignalOn
     { 165, 165, 165, 64 },  // Color::eLink
-    { 255, 255, 255, 255 }  // Color::eSelected
+    { 255, 255, 255, 255 },  // Color::eSelected
+    { 0, 170, 238, 255 },   // Color::eWord64SignalOn
+    { 62, 84, 174, 255 },   // Color::eWord64SignalOff
+    { 254, 144,  50, 255 },//Color::eByteSignalOn
+    { 254,  74,  53, 255 }//Color::eByteSignalOff
 } };
 }
 

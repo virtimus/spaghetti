@@ -36,6 +36,7 @@ Package::Package() {}
 void Package::showProperties()
 {
   showCommonProperties();
+  showOrientationProperties();
 
   auto const package = static_cast<spaghetti::Package *>(m_element);
   auto const PATH = QString::fromStdString(std::string(package->packagePath()));
@@ -120,13 +121,13 @@ void Package::handleEvent(Event const &a_event)
       auto const OUTPUTS_SIZE = m_inputsNode->outputs().size();
       auto const ADD_SOCKET_NEEDED = OUTPUTS_SIZE < INPUTS_SIZE;
       assert(ADD_SOCKET_NEEDED == true);
-      m_inputsNode->addSocket(SocketType::eOutput, static_cast<uint8_t>(OUTPUTS_SIZE),
-                              QString::fromStdString(LAST_INPUT.name), LAST_INPUT.type);
+      m_inputsNode->addSocket(IOSocketsType::eOutputs, static_cast<uint8_t>(OUTPUTS_SIZE),
+                              QString::fromStdString(LAST_INPUT.name), LAST_INPUT.type,SocketType::eOutput);
       m_inputsNode->calculateBoundingRect();
       break;
     }
     case EventType::eInputRemoved: {
-      m_inputsNode->removeSocket(SocketType::eOutput);
+      m_inputsNode->removeSocket(IOSocketsType::eOutputs);
       m_inputsNode->calculateBoundingRect();
       break;
     }
@@ -137,13 +138,13 @@ void Package::handleEvent(Event const &a_event)
       auto const INPUTS_SIZE = m_outputsNode->inputs().size();
       auto const ADD_SOCKET_NEEDED = INPUTS_SIZE < OUTPUTS_SIZE;
       assert(ADD_SOCKET_NEEDED == true);
-      m_outputsNode->addSocket(SocketType::eInput, static_cast<uint8_t>(INPUTS_SIZE),
-                               QString::fromStdString(LAST_OUTPUT.name), LAST_OUTPUT.type);
+      m_outputsNode->addSocket(IOSocketsType::eInputs, static_cast<uint8_t>(INPUTS_SIZE),
+                               QString::fromStdString(LAST_OUTPUT.name), LAST_OUTPUT.type,SocketType::eInput);
       m_outputsNode->calculateBoundingRect();
       break;
     }
     case EventType::eOutputRemoved: {
-      m_outputsNode->removeSocket(SocketType::eInput);
+      m_outputsNode->removeSocket(IOSocketsType::eInputs);
       m_outputsNode->calculateBoundingRect();
       break;
     }
@@ -156,6 +157,10 @@ bool Package::open()
   editor->openOrCreatePackageView(static_cast<spaghetti::Package *>(m_element));
 
   return true;
+}
+
+void Package::consoleAppend(char* text){
+	m_packageView->editor()->consoleAppend(text);
 }
 
 } // namespace spaghetti::nodes

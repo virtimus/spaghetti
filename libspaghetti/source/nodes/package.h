@@ -39,6 +39,7 @@ class Package : public Node {
   void setOutputsNode(Node *const a_node) { m_outputsNode = a_node; }
   Node *outputsNode() { return m_outputsNode; }
   Node const *outputsNode() const { return m_outputsNode; }
+  void consoleAppend(char *text);
 
  private:
   void showProperties() override;
