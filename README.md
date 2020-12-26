@@ -1,3 +1,8 @@
+# Important notice
+
+This fork was modified to be used in [makaronLab](https://github.com/virtimus/makaronLab) project.
+It is rather not suitable now to be run standalone.
+
 # Spaghetti - graphical logic editor/simulator
 [![Build status][travis-badge]][travis-link]
 [![Build status][appveyor-badge]][appveyor-link]
