@@ -114,7 +114,8 @@ Registry::Registry()
   fs::path const HOME_PATH{ getenv("HOME") };
 
   fs::path const LIB_PATH{ fs::canonical(fs::path{ APP_PATH.string() + "/../lib" }) };
-  fs::path const PACKAGES_PATH{ fs::canonical(fs::path{ APP_PATH.string() + "/../../packages" }) };
+  //fs::path const PACKAGES_PATH{ fs::canonical(fs::path{ APP_PATH.string() + "/../../packages" }) };
+  fs::path const PACKAGES_PATH{ "/src/packages" };
   fs::path const SYSTEM_PLUGINS_PATH{ APP_PATH.string() + "/../plugins" };
   fs::path const SYSTEM_PACKAGES_PATH{ PACKAGES_PATH };
 
