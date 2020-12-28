@@ -306,6 +306,9 @@ void Registry::loadPackages()
     for (auto const &DIRECTORY : directories) {
       for (auto const &ENTRY : fs::directory_iterator(DIRECTORY)) {
         if (fs::is_directory(ENTRY)) continue;
+        //std::string cext = ENTRY.path().extension();
+        const std::string PACKAGE_EXT{".package"};
+        if (!(PACKAGE_EXT == ENTRY.path().extension())) continue;
         auto const FILENAME = ENTRY.path().string();
         log::warn("Loading package '{}'", FILENAME);
         packages[FILENAME] = Package::getInfoFor(FILENAME);
